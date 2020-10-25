@@ -1,0 +1,88 @@
+// Keywords: migration, dispersal, CRISPR gene drive, fitness()
+
+initialize() {
+	defineConstant("MIGRATION_RATE",0.01);
+	defineConstant("SELFING_RATE",s);
+	defineConstant("RECOMBINATION_RATE",r);
+	defineConstant("PENETRANCE",p);
+	defineConstant("TA2_ACTIVE",ta2);
+   initializeSLiMModelType("nonWF");
+   defineConstant("K", 10000); // population size
+	initializeMutationRate(0);
+	initializeMutationType("m1", 1, "f", 0.0);   // neutral
+	initializeMutationType("m2", 0.5, "f", 0);  // TA element 1
+   initializeMutationType("m3", 0.5, "f", 0);  // TA element 2
+	initializeGenomicElementType("g1", m1, 1.0);
+	m2.convertToSubstitution=T;
+	m3.convertToSubstitution=T;
+	initializeGenomicElement(g1, 0, 100000);
+	initializeRecombinationRate(RECOMBINATION_RATE / 10000); // TAs will be 1e4bp apart, so bp recombination rate needs to be r/1e4
+}
+reproduction() {
+if(runif(1)<SELFING_RATE) // simulate selfing
+{
+	subpop.addCrossed(individual, individual);
+} else
+{
+	subpop.addCrossed(individual, subpop.sampleIndividuals(1)); 
+}
+}
+1 {
+for (i in 0:2)
+		sim.addSubpop(i, 1000);
+	}
+1 early() {
+
+	p0.genomes.addNewDrawnMutation(m2,50000); // add 500 carriers of TA 1 to the population (hets)
+	p2.genomes.addNewDrawnMutation(m3, 60000); // add 500 carriers of TA 2 to the population (hets)
+
+}
+1:1000 late() {
+		if (sim.countOfMutationsOfType(m2) == 0 & sim.countOfMutationsOfType(m3) == 0)
+		{
+			sim.simulationFinished();
+		} else
+		{
+		catn(""+p0.genomes.countOfMutationsOfType(m2)+p0.genomes.countOfMutationsOfType(m3));
+		catn(""+p1.genomes.countOfMutationsOfType(m2)+p1.genomes.countOfMutationsOfType(m3));
+		catn(""+p2.genomes.countOfMutationsOfType(m2)+p2.genomes.countOfMutationsOfType(m3));	//print out the haplotypes in the population. Every 2 consecutive haplotypes are an individual.
+		}
+}
+early() {
+	nIndividuals = sum(sim.subpopulations.individualCount);
+ 	nMigrants = rpois(1, nIndividuals * MIGRATION_RATE);
+ 	migrants = sample(sim.subpopulations.individuals, nMigrants);
+
+for (migrant in migrants)
+ {
+ do dest = sample(sim.subpopulations, 1);
+ while (dest == migrant.subpopulation);
+ dest.takeMigrants(migrant);
+ } 
+p0.fitnessScaling = K / p0.individualCount;
+p1.fitnessScaling = K / p1.individualCount;
+p2.fitnessScaling = K / p2.individualCount; }
+
+1:1000 modifyChild() { //simulate TA killing. parent1 is taken as mother/father, since sexes aren't explicitly defined. If parent1 is carrier and child doesn't inherit the allele, child dies.
+	killed = F;
+	if (TA2_ACTIVE==1)
+		{	
+		childNaiveAnt = child.countOfMutationsOfType(m3)==0;
+		parentAcarrierAnt = parent1.countOfMutationsOfType(m3)>0;
+		if (childNaiveAnt & parentAcarrierAnt & runif(1)<=PENETRANCE) 
+			{
+			killed = T;
+			}
+		}
+	childNaive = child.countOfMutationsOfType(m2)==0; //if child doesn't have TA 1
+	parentAcarrier = parent1.countOfMutationsOfType(m2)>0; // and parent1 is a carrier (population has no sexes, so just take parent1)
+	if (childNaive & parentAcarrier & runif(1)<=PENETRANCE)
+		{
+		killed = T;
+		}
+ 	if(killed)
+	{
+	 return F; // child is dropped
+	}
+	return T; 
+}
